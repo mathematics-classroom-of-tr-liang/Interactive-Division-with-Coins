@@ -2,8 +2,8 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>除法平分與換幣練習 - 平板相容版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>除法平分練習 - 教學強化版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -13,78 +13,54 @@
             font-family: 'Noto Sans TC', sans-serif;
             user-select: none;
             background-color: #f8fafc;
-            /* 允許捲動，防止內容超出 */
-            overflow-y: auto; 
-            min-height: 100vh;
-            padding-bottom: 140px; /* 為底部按鈕預留空間 */
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
-        /* 拖曳中的錢幣樣式 */
         .coin {
             cursor: grab;
             transition: transform 0.1s;
-            touch-action: none; /* 僅錢幣本身禁止原生手勢，確保拖曳順暢 */
+            touch-action: none;
         }
         .coin.dragging {
             opacity: 0.9;
-            transform: scale(1.3);
-            box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+            transform: scale(1.2);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
             pointer-events: none; 
             position: fixed;
             z-index: 9999;
         }
 
-        .drop-zone-active {
+        .drop-target-active {
             background-color: #fef3c7 !important;
             border-color: #f59e0b !important;
-            transform: scale(1.02);
         }
 
-        .exchange-zone {
-            background: linear-gradient(145deg, #fffbeb, #fef3c7);
-            border: 2px dashed #f59e0b;
+        .bank-slot {
+            @apply bg-white p-2 rounded-xl border border-slate-100 shadow-inner flex-1 overflow-y-auto;
         }
-
-        .bank-label {
-            @apply bg-white px-3 py-1 rounded-xl border shadow-sm font-black text-center;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         
-        @keyframes fadeInOut {
-            0% { opacity: 0; transform: translate(-50%, -60%); }
-            15% { opacity: 1; transform: translate(-50%, -50%); }
-            85% { opacity: 1; transform: translate(-50%, -50%); }
-            100% { opacity: 0; transform: translate(-50%, -40%); }
+        .modal-animate {
+            animation: fadeIn 0.15s ease-out forwards;
         }
-        .toast-message {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 2000;
-            animation: fadeInOut 2s ease-in-out forwards;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
         }
 
-        .footer-fixed {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            z-index: 100;
-            margin: 1rem;
+        .numpad-btn {
+            @apply h-14 bg-slate-100 rounded-xl text-xl font-black text-slate-700 hover:bg-indigo-100 active:scale-95 transition-all;
         }
 
-        .coin-in-pile {
-            transition: transform 0.1s;
-            cursor: pointer;
-        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
-<body class="p-3 md:p-6">
-    <div id="root" class="flex flex-col gap-4 max-w-7xl mx-auto"></div>
-    <div id="toast-container"></div>
+<body class="p-4 md:p-6">
+    <div id="root" class="max-w-[1600px] mx-auto w-full h-full flex flex-col gap-4"></div>
 
     <script>
         let history = [];
@@ -93,18 +69,10 @@
             divisor: 3,
             bank: { tens: 4, ones: 2 },
             piles: Array.from({ length: 3 }, () => ({ tens: 0, ones: 0 })),
-            isSetting: false 
-        };
-
-        // 用於手動處理平板雙擊
-        let lastClickTime = 0;
-        let lastClickedItem = null;
-
-        let activeDrag = {
-            el: null,
-            type: null,
-            offsetX: 25, 
-            offsetY: 40  
+            isSetting: false,
+            quizStep: 'idle', 
+            tempRemainder: "",
+            message: "請開始平分錢幣。"
         };
 
         function saveToHistory() {
@@ -115,74 +83,64 @@
         function setState(newState) {
             saveToHistory();
             state = { ...state, ...newState };
+            updateMessage();
             render();
         }
 
-        // 處理拖曳開始
+        function updateMessage() {
+            const totalInPiles = state.piles.reduce((acc, p) => acc + (p.tens * 10 + p.ones), 0);
+            const bankTotal = state.bank.tens * 10 + state.bank.ones;
+            if (totalInPiles === 0) state.message = "拖曳 10 元或 1 元到右側人員框。";
+            else if (state.bank.tens >= state.divisor) state.message = "銀行還有 10 元，可繼續平分。";
+            else if (state.bank.tens > 0 && state.bank.tens < state.divisor) state.message = "10 元不夠分了，請拖曳到換幣區。";
+            else if (bankTotal >= state.divisor) state.message = "繼續平分剩下的 1 元。";
+            else state.message = "分完了嗎？請點擊右下角檢查。";
+        }
+
+        let activeDrag = { el: null, type: null, offsetX: 20, offsetY: 20 };
+
         function handleDragStart(e, type) {
             const point = e.type.includes('touch') ? e.touches[0] : e;
-            const clientX = point.clientX;
-            const clientY = point.clientY;
-            
             activeDrag.type = type;
             activeDrag.el = e.target.closest('.coin').cloneNode(true);
             activeDrag.el.classList.add('dragging');
-            
-            activeDrag.el.style.left = `${clientX - activeDrag.offsetX}px`;
-            activeDrag.el.style.top = `${clientY - activeDrag.offsetY}px`;
-            
+            activeDrag.el.style.left = `${point.clientX - activeDrag.offsetX}px`;
+            activeDrag.el.style.top = `${point.clientY - activeDrag.offsetY}px`;
             document.body.appendChild(activeDrag.el);
-            
+
             const moveEvent = e.type.includes('touch') ? 'touchmove' : 'mousemove';
             const endEvent = e.type.includes('touch') ? 'touchend' : 'mouseup';
-            
             window.addEventListener(moveEvent, handleDragMove, { passive: false });
             window.addEventListener(endEvent, handleDragEnd);
         }
 
         function handleDragMove(e) {
             if (!activeDrag.el) return;
-            // 只有在拖曳錢幣時才阻止默認捲動，方便操作
-            e.preventDefault(); 
-            
+            if (e.cancelable) e.preventDefault();
             const point = e.type.includes('touch') ? e.touches[0] : e;
-            const clientX = point.clientX;
-            const clientY = point.clientY;
+            activeDrag.el.style.left = `${point.clientX - activeDrag.offsetX}px`;
+            activeDrag.el.style.top = `${point.clientY - activeDrag.offsetY}px`;
             
-            activeDrag.el.style.left = `${clientX - activeDrag.offsetX}px`;
-            activeDrag.el.style.top = `${clientY - activeDrag.offsetY}px`;
-
-            document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-zone-active'));
-            
-            const target = document.elementFromPoint(clientX, clientY);
+            document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target-active'));
+            const target = document.elementFromPoint(point.clientX, point.clientY);
             const dropZone = target?.closest('.drop-target');
-            if (dropZone) dropZone.classList.add('drop-zone-active');
+            if (dropZone) dropZone.classList.add('drop-target-active');
         }
 
         function handleDragEnd(e) {
             if (!activeDrag.el) return;
-            
             const point = e.type.includes('touch') ? e.changedTouches[0] : e;
-            const clientX = point.clientX || 0;
-            const clientY = point.clientY || 0;
-            
-            const target = document.elementFromPoint(clientX, clientY);
+            const target = document.elementFromPoint(point.clientX, point.clientY);
             const dropZone = target?.closest('.drop-target');
             
             if (dropZone) {
                 const pileIndex = dropZone.getAttribute('data-pile-index');
-                if (pileIndex !== null) {
-                    onDrop(parseInt(pileIndex));
-                } else if (dropZone.id === 'exchange-zone') {
-                    onDropExchange();
-                }
+                if (pileIndex !== null) onDrop(parseInt(pileIndex));
+                else if (dropZone.id === 'exchange-zone') onDropExchange();
             }
-
+            
             activeDrag.el.remove();
             activeDrag.el = null;
-            activeDrag.type = null;
-            document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-zone-active'));
-            
             window.removeEventListener('mousemove', handleDragMove);
             window.removeEventListener('mouseup', handleDragEnd);
             window.removeEventListener('touchmove', handleDragMove);
@@ -194,253 +152,236 @@
             if (!type || state.bank[type] <= 0) return;
             const newPiles = JSON.parse(JSON.stringify(state.piles));
             newPiles[pileIndex][type]++;
-            setState({
-                bank: { ...state.bank, [type]: state.bank[type] - 1 },
-                piles: newPiles
-            });
+            setState({ bank: { ...state.bank, [type]: state.bank[type] - 1 }, piles: newPiles });
         }
 
         function onDropExchange() {
             if (activeDrag.type === 'tens' && state.bank.tens > 0) {
-                setState({
-                    bank: { tens: state.bank.tens - 1, ones: state.bank.ones + 10 }
-                });
-                showToast("10 元換成 10 個 1 元成功！", "info");
+                setState({ bank: { tens: state.bank.tens - 1, ones: state.bank.ones + 10 } });
             }
         }
 
-        // 手動雙擊處理器 (相容平板 Chrome)
-        function handleManualDblClick(pileIndex, type, event) {
-            const currentTime = new Date().getTime();
-            const tapGap = currentTime - lastClickTime;
-            const currentItemKey = `${pileIndex}-${type}`;
-
-            if (tapGap < 300 && tapGap > 0 && lastClickedItem === currentItemKey) {
-                // 觸發收回
-                recallCoin(pileIndex, type);
-                lastClickTime = 0; // 重置
-            } else {
-                lastClickTime = currentTime;
-                lastClickedItem = currentItemKey;
-            }
-        }
-
-        function recallCoin(pileIndex, type) {
+        function handleManualBack(pileIndex, type) {
             const newPiles = JSON.parse(JSON.stringify(state.piles));
             if (newPiles[pileIndex][type] > 0) {
                 newPiles[pileIndex][type]--;
-                setState({
-                    bank: { ...state.bank, [type]: state.bank[type] + 1 },
-                    piles: newPiles
-                });
+                setState({ bank: { ...state.bank, [type]: state.bank[type] + 1 }, piles: newPiles });
             }
         }
 
-        function checkDivision() {
-            const values = state.piles.map(p => p.tens * 10 + p.ones);
-            const firstValue = values[0];
-            const allEqual = values.every(v => v === firstValue);
-            
-            if (!allEqual) {
-                showToast("每個人盤內的金額不相等喔！", "warning");
+        function checkFairness() {
+            const amounts = state.piles.map(p => p.tens * 10 + p.ones);
+            const allEqual = amounts.every(a => a === amounts[0]);
+            if (amounts.every(a => a === 0)) customAlert("還沒開始分錢喔！", "info");
+            else if (allEqual) customAlert("大家分到的一樣多，非常公平！", "success");
+            else customAlert("大家分到的錢不一樣多，再檢查一下。", "warning");
+        }
+
+        function startQuiz() {
+            const amounts = state.piles.map(p => p.tens * 10 + p.ones);
+            if (!amounts.every(a => a === amounts[0])) {
+                customAlert("大家分到的錢要一樣多喔！", "warning");
+                return;
+            }
+            setState({ quizStep: 'judging' });
+        }
+
+        function handleJudge(choice) {
+            const actualRemainder = state.bank.tens * 10 + state.bank.ones;
+            if (choice === 'none') {
+                if (actualRemainder === 0) { customAlert("太棒了！正確完成。", "success"); setState({ quizStep: 'idle' }); }
+                else { customAlert("銀行還有錢喔，再看看。", "warning"); setState({ quizStep: 'idle' }); }
+            } else setState({ quizStep: 'inputtingRemainder', tempRemainder: "" });
+        }
+
+        function submitRemainder() {
+            const actualRemainder = state.bank.tens * 10 + state.bank.ones;
+            if (parseInt(state.tempRemainder) === actualRemainder) {
+                customAlert("答對了！分得非常正確。", "success"); setState({ quizStep: 'idle' });
             } else {
-                showToast(`檢查完成！每個人盤內都是 ${firstValue} 元，一樣多。`, "success");
+                customAlert("餘數不對喔，再數數看？", "warning"); setState({ quizStep: 'inputtingRemainder', tempRemainder: "" });
             }
         }
 
-        function completeExercise() {
-            const bankTotal = state.bank.tens * 10 + state.bank.ones;
-            const values = state.piles.map(p => p.tens * 10 + p.ones);
-            const allEqual = values.every(v => v === values[0]);
-
-            if (bankTotal === 0 && allEqual) {
-                showToast("挑戰成功！正在準備下一題...", "success");
-                setTimeout(() => setState({ isSetting: true }), 1500);
-            } else if (bankTotal > 0) {
-                showToast(`銀行還有 ${bankTotal} 元沒分完喔！`, "warning");
-            } else {
-                checkDivision();
-            }
+        function customAlert(msg, type = "info") {
+            const alertBox = document.createElement('div');
+            const bgClass = type === 'success' ? 'bg-green-600' : (type === 'warning' ? 'bg-orange-500' : 'bg-slate-800');
+            alertBox.className = `fixed top-10 left-1/2 -translate-x-1/2 ${bgClass} text-white px-8 py-4 rounded-2xl shadow-2xl z-[9999] font-black modal-animate flex items-center gap-3 text-lg`;
+            alertBox.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : 'alert-circle'}" size="28"></i> ${msg}`;
+            document.body.appendChild(alertBox);
+            lucide.createIcons();
+            setTimeout(() => { alertBox.style.opacity = '0'; setTimeout(() => alertBox.remove(), 400); }, 2000);
         }
 
         function updateProblem() {
-            const newDiv = parseInt(document.getElementById('input-dividend').value) || 0;
+            const newDiv = parseInt(document.getElementById('input-dividend').value) || 1;
             const newDivisor = parseInt(document.getElementById('input-divisor').value) || 1;
-            
-            if (newDiv > 99) { showToast("金額建議不超過 99 元喔！", "info"); }
-            if (newDivisor > 9) {
-                showToast("人數上限為 9 人喔！", "warning");
-                return;
-            }
-
             state = {
-                ...state,
-                dividend: newDiv,
-                divisor: newDivisor,
+                ...state, dividend: newDiv, divisor: newDivisor,
                 bank: { tens: Math.floor(newDiv / 10), ones: newDiv % 10 },
                 piles: Array.from({ length: newDivisor }, () => ({ tens: 0, ones: 0 })),
-                isSetting: false
+                isSetting: false, quizStep: 'idle'
             };
-            history = [];
-            render();
-            showToast("佈題成功！", "success");
-        }
-
-        function showToast(message, type) {
-            const container = document.getElementById('toast-container');
-            container.innerHTML = ""; 
-            const bgColor = type === 'success' ? 'bg-green-600' : (type === 'warning' ? 'bg-amber-500' : 'bg-blue-600');
-            const toast = document.createElement('div');
-            toast.className = `toast-message px-6 py-3 rounded-2xl shadow-xl text-white text-xl font-black flex items-center gap-3 ${bgColor}`;
-            toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check' : (type === 'warning' ? 'alert-circle' : 'info')}"></i><span>${message}</span>`;
-            container.appendChild(toast);
-            lucide.createIcons();
-            setTimeout(() => toast.remove(), 2500);
+            history = []; setState(state);
         }
 
         function render() {
             const root = document.getElementById('root');
             const bankTotal = state.bank.tens * 10 + state.bank.ones;
 
-            let gridCols = "grid-cols-1";
-            if (state.divisor > 3) gridCols = "md:grid-cols-2";
-            if (state.divisor >= 7) gridCols = "md:grid-cols-3";
-
             root.innerHTML = `
-                <!-- Header -->
-                <div class="bg-white px-6 py-4 rounded-3xl shadow-sm border border-blue-100 flex items-center justify-between shrink-0">
+                <!-- Top Header -->
+                <div class="flex items-center justify-between shrink-0">
                     <div class="flex items-center gap-4">
-                        <div class="bg-blue-600 text-white p-2 rounded-xl"><i data-lucide="book-open" size="24"></i></div>
-                        <h1 class="text-xl md:text-2xl font-black text-slate-800">
-                            把 <span class="text-blue-600">${state.dividend}</span> 元，
-                            平分給 <span class="text-orange-500">${state.divisor}</span> 人
+                        <div class="bg-indigo-600 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"><i data-lucide="help-circle" size="24"></i></div>
+                        <h1 class="text-3xl font-black text-slate-800">
+                            請將 <span class="text-indigo-600 px-2">${state.dividend}</span> 元平分給 <span class="text-orange-500 px-2">${state.divisor}</span> 個人
                         </h1>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="history.length > 0 && setState(history.pop())" class="p-2 border border-slate-200 rounded-xl hover:text-blue-600">
-                            <i data-lucide="undo-2" size="20"></i>
-                        </button>
-                        <button onclick="setState({isSetting: true})" class="p-2 bg-slate-100 text-slate-500 rounded-xl">
-                            <i data-lucide="settings" size="20"></i>
-                        </button>
+                        <button onclick="history.length > 0 && setState(history.pop())" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 shadow-sm transition-all font-bold text-sm"><i data-lucide="undo-2" size="16"></i>上一步</button>
+                        <button onclick="setState({isSetting: true})" class="p-2 bg-slate-800 text-white rounded-xl hover:bg-slate-700 shadow-md transition-all"><i data-lucide="settings" size="18"></i></button>
                     </div>
                 </div>
 
-                <!-- Main Content Area -->
-                <div class="flex flex-col lg:flex-row gap-6">
-                    
-                    <!-- Bank Area -->
-                    <div class="w-full lg:w-72 shrink-0 flex flex-col gap-4">
-                        <div class="bg-white rounded-[40px] border-2 border-blue-500 shadow-xl p-5">
-                            <div class="text-center mb-4">
-                                <span class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">Bank 銀行</span>
-                                <div class="text-3xl font-black text-blue-600 mt-1">${bankTotal} <span class="text-sm">元</span></div>
-                            </div>
-
-                            <div class="space-y-4">
-                                <div class="bg-red-50 rounded-2xl p-4 border border-red-100">
-                                    <div class="bank-label border-red-200 text-red-600 text-lg mb-3">10元：${state.bank.tens}</div>
-                                    <div class="flex flex-wrap justify-center gap-2 min-h-[60px]">
-                                        ${Array.from({ length: state.bank.tens }).map(() => `
-                                            <div onmousedown="handleDragStart(event, 'tens')" ontouchstart="handleDragStart(event, 'tens')"
-                                                 class="coin w-12 h-12 bg-red-500 border-2 border-red-600 rounded-full flex items-center justify-center text-white font-black shadow-md active:scale-90">10</div>
-                                        `).join('')}
+                <div class="flex-1 flex gap-6 overflow-hidden min-h-0">
+                    <!-- Left: Bank & Exchange (Teacher's Focus) -->
+                    <div class="w-80 shrink-0 flex flex-col gap-4">
+                        <div class="flex-[3] bg-white rounded-3xl border-4 border-indigo-600 shadow-xl overflow-hidden flex flex-col">
+                            <div class="bg-indigo-600 p-4 text-white">
+                                <span class="text-sm font-bold opacity-80 tracking-widest block mb-1">我的銀行</span>
+                                <div class="flex items-end justify-between border-b border-indigo-400 pb-3 mb-3">
+                                    <span class="text-4xl font-black">${bankTotal}</span>
+                                    <span class="text-lg font-bold mb-1">元</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="bg-white/10 rounded-xl p-2 text-center">
+                                        <div class="text-[10px] font-bold opacity-80">10 元</div>
+                                        <div class="text-2xl font-black">${state.bank.tens} <span class="text-xs">個</span></div>
+                                    </div>
+                                    <div class="bg-white/10 rounded-xl p-2 text-center">
+                                        <div class="text-[10px] font-bold opacity-80">1 元</div>
+                                        <div class="text-2xl font-black">${state.bank.ones} <span class="text-xs">個</span></div>
                                     </div>
                                 </div>
-
-                                <div class="bg-blue-50 rounded-2xl p-4 border border-blue-100">
-                                    <div class="bank-label border-blue-200 text-blue-600 text-lg mb-3">1元：${state.bank.ones}</div>
-                                    <div class="flex flex-wrap justify-center gap-2 min-h-[60px]">
-                                        ${Array.from({ length: state.bank.ones }).map(() => `
-                                            <div onmousedown="handleDragStart(event, 'ones')" ontouchstart="handleDragStart(event, 'ones')"
-                                                 class="coin w-9 h-9 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-xs shadow-md active:scale-90">1</div>
-                                        `).join('')}
+                            </div>
+                            
+                            <div class="p-3 flex flex-col gap-3 flex-1 overflow-hidden bg-slate-50">
+                                <div class="bank-slot">
+                                    <div class="flex flex-wrap gap-2 justify-start p-1">
+                                        ${Array.from({ length: state.bank.tens }).map(() => `<div onmousedown="handleDragStart(event, 'tens')" ontouchstart="handleDragStart(event, 'tens')" class="coin w-12 h-12 bg-red-500 border-2 border-red-600 rounded-full flex items-center justify-center text-white font-black text-sm shadow-md ring-2 ring-white/20">10</div>`).join('')}
+                                    </div>
+                                </div>
+                                <div class="bank-slot">
+                                    <div class="flex flex-wrap gap-2 justify-start p-1">
+                                        ${Array.from({ length: state.bank.ones }).map(() => `<div onmousedown="handleDragStart(event, 'ones')" ontouchstart="handleDragStart(event, 'ones')" class="coin w-9 h-9 bg-sky-400 border-2 border-sky-500 rounded-full flex items-center justify-center text-white font-black text-xs shadow-md ring-2 ring-white/20">1</div>`).join('')}
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div id="exchange-zone" class="drop-target exchange-zone h-20 rounded-[30px] flex flex-col items-center justify-center transition-all">
-                            <i data-lucide="refresh-cw" class="text-amber-500 mb-1" size="24"></i>
-                            <p class="text-xs font-black text-amber-700">10 元換 10 個 1 元</p>
+                        <!-- Exchange Zone -->
+                        <div id="exchange-zone" class="drop-target h-20 rounded-2xl bg-amber-50 border-2 border-dashed border-amber-400 flex flex-col items-center justify-center gap-1 group transition-all shrink-0">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="refresh-cw" class="text-amber-600" size="18"></i>
+                                <span class="text-amber-800 font-black text-sm">換幣區 (把10元拖曳至此換為1元)</span>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Piles Area -->
-                    <div class="flex-1 grid ${gridCols} gap-4">
-                        ${state.piles.map((pile, i) => `
-                            <div data-pile-index="${i}"
-                                 class="drop-target bg-white rounded-[32px] p-5 border border-slate-200 shadow-sm flex flex-col gap-3 min-h-[160px]">
-                                
-                                <div class="flex justify-between items-center">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600">
-                                            <i data-lucide="user" size="20"></i>
+                    <!-- Right: Allocation Area (Optimized Height) -->
+                    <div class="flex-1 flex flex-col gap-4 overflow-hidden min-h-0">
+                        <div class="flex-1 overflow-y-auto pr-2 bg-slate-200/30 rounded-3xl p-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-3 pb-2">
+                                ${state.piles.map((pile, i) => `
+                                    <div data-pile-index="${i}" class="drop-target bg-white rounded-2xl p-3 border-2 border-slate-100 shadow-sm flex items-center gap-4 h-24 transition-all">
+                                        <div class="shrink-0 flex flex-col items-center justify-center bg-slate-50 w-16 h-full rounded-xl border border-slate-100">
+                                            <span class="text-[10px] font-bold text-slate-400">對象</span>
+                                            <span class="text-2xl font-black text-slate-700">${i+1}</span>
                                         </div>
-                                        <span class="font-black text-slate-700 text-lg">第 ${i+1} 人</span>
+                                        <div class="flex-1 flex flex-wrap gap-1.5 content-center h-full overflow-y-auto">
+                                            ${Array.from({ length: pile.tens }).map(() => `<div onclick="handleManualBack(${i}, 'tens')" class="w-10 h-10 bg-red-500 border-2 border-red-600 rounded-full flex items-center justify-center text-white font-black text-xs shadow-sm cursor-pointer hover:scale-105 active:scale-90 transition-all shrink-0">10</div>`).join('')}
+                                            ${Array.from({ length: pile.ones }).map(() => `<div onclick="handleManualBack(${i}, 'ones')" class="w-8 h-8 bg-sky-400 border-2 border-sky-500 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm cursor-pointer hover:scale-105 active:scale-90 transition-all shrink-0">1</div>`).join('')}
+                                        </div>
+                                        <div class="shrink-0 bg-indigo-600 px-3 py-1.5 rounded-xl text-white font-black text-base shadow-sm">
+                                            ${pile.tens * 10 + pile.ones} <span class="text-[10px]">元</span>
+                                        </div>
                                     </div>
-                                    <div class="bg-blue-600 px-4 py-1 rounded-full text-white font-black text-xl shadow-inner">
-                                        ${pile.tens * 10 + pile.ones} <span class="text-xs">元</span>
-                                    </div>
-                                </div>
-
-                                <div class="flex-1 flex flex-wrap gap-2 content-start p-4 rounded-2xl bg-slate-50 shadow-inner min-h-[80px]">
-                                    ${Array.from({ length: pile.tens }).map(() => `
-                                        <div onclick="handleManualDblClick(${i}, 'tens', event)"
-                                             class="coin-in-pile w-11 h-11 bg-red-500 border border-red-600 rounded-full flex items-center justify-center text-white font-black text-sm shadow-sm active:scale-125">10</div>
-                                    `).join('')}
-                                    ${Array.from({ length: pile.ones }).map(() => `
-                                        <div onclick="handleManualDblClick(${i}, 'ones', event)"
-                                             class="coin-in-pile w-8 h-8 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-xs active:scale-125">1</div>
-                                    `).join('')}
-                                </div>
+                                `).join('')}
                             </div>
-                        `).join('')}
+                        </div>
+
+                        <!-- Right Bottom Controls -->
+                        <div class="shrink-0 flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                            <div class="flex items-center gap-3">
+                                <div class="w-3 h-3 bg-amber-400 rounded-full animate-pulse"></div>
+                                <span class="text-sm font-bold text-slate-500">${state.message}</span>
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="checkFairness()" class="px-6 py-3 bg-slate-100 text-slate-600 rounded-xl font-black hover:bg-slate-200 transition-all flex items-center gap-2">
+                                    <i data-lucide="scale" size="18"></i>檢查平分
+                                </button>
+                                <button onclick="startQuiz()" class="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2">
+                                    <i data-lucide="check-circle-2" size="20"></i>完成分錢
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Footer -->
-                <div class="footer-fixed bg-slate-800 rounded-3xl p-4 text-white shadow-2xl flex flex-col md:flex-row items-center justify-between px-8 gap-4">
-                    <div class="flex items-center gap-6">
-                        <div class="flex items-center gap-2 text-blue-400">
-                            <i data-lucide="info" size="20"></i>
-                            <span class="text-sm font-black">操作：</span>
-                        </div>
-                        <div class="flex gap-6 text-sm font-bold text-slate-300">
-                            <span class="flex items-center gap-2"><i data-lucide="mouse-pointer-2" size="14"></i> 拖曳分錢</span>
-                            <span class="flex items-center gap-2 text-amber-300"><i data-lucide="hand" size="14"></i> 雙擊盤中錢幣可收回</span>
+                <!-- Modals -->
+                ${state.quizStep === 'judging' ? `
+                    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-6">
+                        <div class="bg-white p-8 rounded-3xl w-full max-w-sm modal-animate shadow-2xl text-center">
+                            <h2 class="text-2xl font-black mb-8 text-slate-800">請問分完了嗎？</h2>
+                            <div class="grid grid-cols-2 gap-4">
+                                <button onclick="handleJudge('none')" class="p-6 bg-green-50 border-2 border-green-500 rounded-2xl flex flex-col items-center gap-2 hover:bg-green-100 transition-all">
+                                    <div class="bg-green-500 p-2 rounded-full text-white"><i data-lucide="check" size="24"></i></div>
+                                    <span class="font-black text-green-700">剛好分完</span>
+                                </button>
+                                <button onclick="handleJudge('more')" class="p-6 bg-orange-50 border-2 border-orange-500 rounded-2xl flex flex-col items-center gap-2 hover:bg-orange-100 transition-all">
+                                    <div class="bg-orange-500 p-2 rounded-full text-white"><i data-lucide="help-circle" size="24"></i></div>
+                                    <span class="font-black text-orange-700">還有剩下</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
+                ` : ''}
 
-                    <div class="flex gap-4">
-                        <button onclick="checkDivision()" class="px-6 py-2 bg-slate-700 rounded-2xl font-black flex items-center gap-2 hover:bg-slate-600 active:scale-95 transition-all">
-                            <i data-lucide="scale" size="18" class="text-blue-400"></i>檢查平分
-                        </button>
-                        <button onclick="completeExercise()" class="px-8 py-2 bg-blue-600 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-blue-500 active:scale-95 transition-all">
-                            <i data-lucide="check-circle" size="18"></i>完成分錢
-                        </button>
+                ${state.quizStep === 'inputtingRemainder' ? `
+                    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-6">
+                        <div class="bg-white p-6 rounded-3xl w-full max-w-[320px] modal-animate shadow-2xl border-4 border-indigo-600">
+                            <h2 class="text-xl font-black text-center mb-4 text-slate-700">銀行最後剩下多少元？</h2>
+                            <div class="bg-slate-100 py-4 rounded-2xl mb-4 text-center">
+                                <span class="text-4xl font-black text-indigo-600">${state.tempRemainder || '0'}</span>
+                                <span class="text-xl text-indigo-400 ml-1">元</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2">
+                                ${[1,2,3,4,5,6,7,8,9].map(n => `<button onclick="setState({tempRemainder: state.tempRemainder.length < 2 ? state.tempRemainder + ${n} : state.tempRemainder})" class="numpad-btn">${n}</button>`).join('')}
+                                <button onclick="setState({tempRemainder: ''})" class="numpad-btn bg-red-50 text-red-400"><i data-lucide="delete" class="mx-auto" size="18"></i></button>
+                                <button onclick="setState({tempRemainder: state.tempRemainder.length < 2 ? state.tempRemainder + '0' : state.tempRemainder})" class="numpad-btn">0</button>
+                                <button onclick="submitRemainder()" class="numpad-btn bg-indigo-600 text-white font-black">OK</button>
+                            </div>
+                        </div>
                     </div>
-                </div>
+                ` : ''}
 
-                <!-- Settings Modal -->
                 ${state.isSetting ? `
-                    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2500] flex items-center justify-center p-4">
-                        <div class="bg-white p-8 rounded-[40px] shadow-2xl w-full max-w-[420px] border-4 border-blue-600">
-                            <h2 class="text-2xl font-black mb-6 text-slate-800 flex items-center gap-3">
-                                <i data-lucide="settings-2" class="text-blue-600"></i> 設定題目
-                            </h2>
+                    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[6000] flex items-center justify-center p-4">
+                        <div class="bg-white p-8 rounded-3xl w-full max-w-[360px] border-4 border-slate-800 shadow-2xl">
+                            <h2 class="text-2xl font-black text-center mb-6 text-slate-800">重設題目</h2>
                             <div class="space-y-6">
-                                <div class="space-y-2">
-                                    <label class="text-sm font-black text-slate-400 uppercase tracking-widest">總金額 (1-99 元)</label>
-                                    <input id="input-dividend" type="number" value="${state.dividend}" class="w-full text-4xl font-black p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-blue-500 outline-none">
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-white px-2 text-[10px] font-black text-indigo-600 tracking-widest">總金額</label>
+                                    <input id="input-dividend" type="number" value="${state.dividend}" class="w-full text-3xl font-black p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-center outline-none focus:border-indigo-400 transition-all">
                                 </div>
-                                <div class="space-y-2">
-                                    <label class="text-sm font-black text-slate-400 uppercase tracking-widest">平分人數 (1-9 人)</label>
-                                    <input id="input-divisor" type="number" value="${state.divisor}" min="1" max="9" class="w-full text-4xl font-black p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-blue-500 outline-none">
+                                <div class="relative">
+                                    <label class="absolute -top-2 left-4 bg-white px-2 text-[10px] font-black text-orange-500 tracking-widest">平分人數</label>
+                                    <input id="input-divisor" type="number" value="${state.divisor}" min="1" max="9" class="w-full text-3xl font-black p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-center text-orange-500 outline-none focus:border-orange-400 transition-all">
                                 </div>
-                                <div class="flex gap-4 pt-4">
-                                    <button onclick="setState({isSetting: false})" class="flex-1 py-4 font-black text-slate-400 active:scale-95">取消</button>
-                                    <button onclick="updateProblem()" class="flex-1 py-4 font-black bg-blue-600 text-white rounded-2xl shadow-lg active:scale-95">更新題目</button>
+                                <div class="flex gap-2">
+                                    <button onclick="setState({isSetting: false})" class="flex-1 py-3 font-bold text-slate-400 hover:text-slate-600">取消</button>
+                                    <button onclick="updateProblem()" class="flex-1 py-3 font-black bg-slate-800 text-white rounded-xl shadow-md hover:bg-slate-700">更新設定</button>
                                 </div>
                             </div>
                         </div>
