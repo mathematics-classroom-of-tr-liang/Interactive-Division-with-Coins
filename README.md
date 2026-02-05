@@ -1,11 +1,9 @@
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>除法平分與換幣練習</title>
+    <title>除法平分與換幣練習 - 精簡固定版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -13,9 +11,10 @@
         body {
             font-family: 'Noto Sans TC', sans-serif;
             user-select: none;
-            overflow: hidden;
-            height: 100vh;
             background-color: #f8fafc;
+            /* 允許頁面滾動以應對不同螢幕尺寸 */
+            overflow-y: auto;
+            min-height: 100vh;
         }
         .coin {
             cursor: grab;
@@ -58,7 +57,7 @@
     </style>
 </head>
 <body class="p-3 md:p-4">
-    <div id="root" class="h-full flex flex-col gap-3"></div>
+    <div id="root" class="min-h-full flex flex-col gap-3"></div>
     <div id="toast-container"></div>
 
     <script>
@@ -204,24 +203,24 @@
                     </div>
                 </div>
 
-                <!-- Main -->
-                <div class="flex-1 flex gap-4 overflow-hidden min-h-0">
+                <!-- Main Content Area -->
+                <div class="flex flex-col md:flex-row gap-4 flex-1">
                     
                     <!-- Left: Bank Area -->
-                    <div class="w-1/3 max-w-[320px] flex flex-col gap-3 shrink-0 h-full">
-                        <div class="bg-white rounded-[32px] border-2 border-blue-500 shadow-lg flex-1 flex flex-col p-4 overflow-hidden">
+                    <div class="w-full md:w-1/3 max-w-[320px] flex flex-col gap-3 shrink-0">
+                        <div class="bg-white rounded-[32px] border-2 border-blue-500 shadow-lg flex flex-col p-4">
                             <div class="text-center mb-3">
                                 <div class="inline-block bg-blue-600 text-white px-3 py-0.5 rounded-full text-[10px] font-black tracking-widest mb-1">BANK 銀行</div>
                                 <div class="text-xl font-black text-slate-700">剩餘：<span class="text-blue-600 text-3xl">${bankTotal}</span> 元</div>
                             </div>
 
-                            <div class="flex-1 flex flex-col gap-3 min-h-0 overflow-hidden">
+                            <div class="flex flex-col gap-3">
                                 <!-- 10元區 -->
                                 <div class="bg-red-50 rounded-2xl p-3 border border-red-100 flex flex-col items-center">
                                     <div class="bank-label border-red-200 text-red-600 mb-2 w-full">
                                         <span class="text-2xl font-black">${state.bank.tens}</span> <span class="text-sm font-bold">個 10 元</span>
                                     </div>
-                                    <div class="flex flex-wrap justify-center gap-1.5 overflow-y-auto max-h-[110px] custom-scrollbar">
+                                    <div class="flex flex-wrap justify-center gap-1.5 overflow-y-auto max-h-[150px] custom-scrollbar">
                                         ${Array.from({ length: state.bank.tens }).map(() => `
                                             <div draggable="true" ondragstart="onDragStart('tens')" 
                                                  class="coin w-10 h-10 bg-red-500 border-2 border-red-600 rounded-full flex items-center justify-center text-white font-black text-sm shadow-md ring-2 ring-red-50">10</div>
@@ -230,11 +229,11 @@
                                 </div>
 
                                 <!-- 1元區 -->
-                                <div class="bg-blue-50 rounded-2xl p-3 border border-blue-100 flex flex-col items-center flex-1 overflow-hidden">
+                                <div class="bg-blue-50 rounded-2xl p-3 border border-blue-100 flex flex-col items-center">
                                     <div class="bank-label border-blue-200 text-blue-600 mb-2 w-full">
                                         <span class="text-2xl font-black">${state.bank.ones}</span> <span class="text-sm font-bold">個 1 元</span>
                                     </div>
-                                    <div class="flex-1 flex flex-wrap justify-center gap-1 overflow-y-auto custom-scrollbar w-full">
+                                    <div class="flex flex-wrap justify-center gap-1 overflow-y-auto max-h-[200px] custom-scrollbar w-full">
                                         ${Array.from({ length: state.bank.ones }).map(() => `
                                             <div draggable="true" ondragstart="onDragStart('ones')" 
                                                  class="coin w-7 h-7 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm ring-1 ring-blue-50">1</div>
@@ -247,19 +246,19 @@
                         <!-- Exchange Area -->
                         <div ondragover="event.preventDefault(); this.classList.add('drop-zone-active')" 
                              ondrop="this.classList.remove('drop-zone-active'); onDropExchange()"
-                             class="exchange-zone h-16 rounded-2xl flex flex-col items-center justify-center transition-all shadow-sm shrink-0">
+                             class="exchange-zone h-20 rounded-2xl flex flex-col items-center justify-center transition-all shadow-sm shrink-0">
                             <i data-lucide="refresh-cw" class="text-amber-500" size="18"></i>
                             <p class="text-xs font-black text-amber-700">10 元拖到此處換幣</p>
                         </div>
                     </div>
 
                     <!-- Right: Piles -->
-                    <div class="flex-1 flex flex-col gap-3 overflow-hidden h-full">
-                        <div class="flex-1 grid ${gridCols} gap-3 overflow-y-auto pr-2 custom-scrollbar pb-6 content-start">
+                    <div class="flex-1 flex flex-col gap-3">
+                        <div class="grid ${gridCols} gap-3 content-start">
                             ${state.piles.map((pile, i) => `
                                 <div ondragover="event.preventDefault(); this.classList.add('drop-zone-active')" 
                                      ondrop="this.classList.remove('drop-zone-active'); onDrop(${i})"
-                                     class="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm flex flex-col gap-2 transition-all min-h-[130px]">
+                                     class="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm flex flex-col gap-2 transition-all min-h-[140px]">
                                     
                                     <div class="flex justify-between items-center">
                                         <div class="flex items-center gap-2">
@@ -274,7 +273,7 @@
                                         </div>
                                     </div>
 
-                                    <div class="flex-1 flex flex-wrap gap-1.5 content-start p-3 rounded-2xl bg-slate-50 shadow-inner min-h-[50px]">
+                                    <div class="flex-1 flex flex-wrap gap-1.5 content-start p-3 rounded-2xl bg-slate-50 shadow-inner min-h-[60px]">
                                         ${Array.from({ length: pile.tens }).map(() => `
                                             <div ondblclick="recallCoin(${i}, 'tens')" class="coin w-8 h-8 bg-red-500 border border-red-600 rounded-full flex items-center justify-center text-white font-black text-xs shadow-sm">10</div>
                                         `).join('')}
@@ -289,13 +288,13 @@
                 </div>
 
                 <!-- Footer Instruction & Actions Bar -->
-                <div class="bg-slate-800 rounded-2xl p-3 text-white shadow-md shrink-0 flex items-center justify-between px-6">
-                    <div class="flex items-center gap-8">
-                        <div class="flex items-center gap-2 border-r border-slate-600 pr-6">
+                <div class="bg-slate-800 rounded-2xl p-3 text-white shadow-md shrink-0 flex flex-col lg:flex-row items-center justify-between px-6 gap-4">
+                    <div class="flex flex-wrap items-center justify-center gap-4 lg:gap-8">
+                        <div class="flex items-center gap-2 lg:border-r border-slate-600 lg:pr-6">
                             <i data-lucide="info" size="18" class="text-blue-400"></i>
                             <span class="text-xs font-black tracking-widest uppercase">操作說明</span>
                         </div>
-                        <div class="flex items-center gap-6">
+                        <div class="flex flex-wrap justify-center items-center gap-4 lg:gap-6">
                             <div class="flex items-center gap-2">
                                 <div class="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
                                 <p class="text-[11px] font-bold">拖曳錢幣平分</p>
