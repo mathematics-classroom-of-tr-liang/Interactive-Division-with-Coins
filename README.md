@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>除法平分與換幣練習 - 平板觸控優化版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -17,11 +17,11 @@
             font-family: 'Noto Sans TC', sans-serif;
             user-select: none;
             background-color: #f8fafc;
-            overflow-x: hidden;
-            min-height: calc(100vh - var(--external-header-offset));
+            overflow: hidden; /* 防止整體滾動干擾拖曳 */
+            height: 100vh;
             display: flex;
             flex-direction: column;
-            touch-action: manipulation; /* 防止雙擊縮放干擾 */
+            touch-action: none; /* 禁用瀏覽器手勢，由程式接管 */
         }
 
         #root {
@@ -29,6 +29,8 @@
             display: flex;
             flex-direction: column;
             width: 100%;
+            overflow-y: auto; /* 內容過長時在此滾動 */
+            padding-bottom: 100px;
         }
 
         /* 拖曳中的錢幣樣式 */
@@ -40,18 +42,19 @@
             z-index: 10;
         }
         .coin.dragging {
-            opacity: 0.8;
-            transform: scale(1.2);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-            pointer-events: none; /* 確保能觸發下方的 dropzone */
+            opacity: 0.9;
+            transform: scale(1.3);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+            pointer-events: none; /* 極重要：讓觸控穿透到下方元素 */
             position: fixed;
-            z-index: 1000;
+            z-index: 9999;
         }
 
         .drop-zone-active {
             background-color: #fef3c7 !important;
             border-color: #f59e0b !important;
-            transform: scale(1.02);
+            transform: scale(1.03);
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.2);
         }
 
         .exchange-zone {
@@ -81,8 +84,12 @@
             animation: fadeInOut 2s ease-in-out forwards;
         }
 
-        .safe-bottom {
-            padding-bottom: 2rem;
+        .footer-fixed {
+            position: fixed;
+            bottom: 1rem;
+            left: 1rem;
+            right: 1rem;
+            z-index: 100;
         }
     </style>
 </head>
@@ -100,12 +107,11 @@
             isSetting: false 
         };
 
-        // 拖曳狀態追蹤
         let activeDrag = {
             el: null,
             type: null,
-            startX: 0,
-            startY: 0
+            offsetX: 25, // 拖曳物件與觸控點的偏移量
+            offsetY: 60  // 往上偏移一點，讓手指不會擋住視野
         };
 
         function saveToHistory() {
@@ -119,34 +125,49 @@
             render();
         }
 
-        // --- 拖曳核心邏輯 (支援觸控與滑鼠) ---
+        // --- 核心平板觸控邏輯 ---
         function handleDragStart(e, type) {
-            const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
-            const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+            // 避免觸發瀏覽器選取文字
+            e.preventDefault();
+            
+            const point = e.type.includes('touch') ? e.touches[0] : e;
+            const clientX = point.clientX;
+            const clientY = point.clientY;
             
             activeDrag.type = type;
             activeDrag.el = e.target.closest('.coin').cloneNode(true);
             activeDrag.el.classList.add('dragging');
-            activeDrag.el.style.left = `${clientX - 20}px`;
-            activeDrag.el.style.top = `${clientY - 20}px`;
+            
+            // 初始位置稍微偏移手指上方，避免擋住 target 偵測
+            activeDrag.el.style.left = `${clientX - activeDrag.offsetX}px`;
+            activeDrag.el.style.top = `${clientY - activeDrag.offsetY}px`;
+            
             document.body.appendChild(activeDrag.el);
             
-            window.addEventListener(e.type.includes('touch') ? 'touchmove' : 'mousemove', handleDragMove, { passive: false });
-            window.addEventListener(e.type.includes('touch') ? 'touchend' : 'mouseup', handleDragEnd);
+            const moveEvent = e.type.includes('touch') ? 'touchmove' : 'mousemove';
+            const endEvent = e.type.includes('touch') ? 'touchend' : 'mouseup';
+            
+            window.addEventListener(moveEvent, handleDragMove, { passive: false });
+            window.addEventListener(endEvent, handleDragEnd);
         }
 
         function handleDragMove(e) {
             if (!activeDrag.el) return;
-            e.preventDefault(); // 防止滾動
-            const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
-            const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+            e.preventDefault(); 
             
-            activeDrag.el.style.left = `${clientX - 20}px`;
-            activeDrag.el.style.top = `${clientY - 20}px`;
+            const point = e.type.includes('touch') ? e.touches[0] : e;
+            const clientX = point.clientX;
+            const clientY = point.clientY;
+            
+            // 更新複本位置
+            activeDrag.el.style.left = `${clientX - activeDrag.offsetX}px`;
+            activeDrag.el.style.top = `${clientY - activeDrag.offsetY}px`;
 
-            // 檢查下方的目標元素
-            const target = document.elementFromPoint(clientX, clientY);
+            // 移除舊的啟動狀態
             document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-zone-active'));
+            
+            // 偵測手指正下方的元素 (因複本設定了 pointer-events: none，所以可以偵測到後方)
+            const target = document.elementFromPoint(clientX, clientY);
             const dropZone = target?.closest('.drop-target');
             if (dropZone) dropZone.classList.add('drop-zone-active');
         }
@@ -154,8 +175,9 @@
         function handleDragEnd(e) {
             if (!activeDrag.el) return;
             
-            const clientX = e.type.includes('touch') ? e.changedTouches[0].clientX : e.clientX;
-            const clientY = e.type.includes('touch') ? e.changedTouches[0].clientY : e.clientY;
+            const point = e.type.includes('touch') ? e.changedTouches[0] : e;
+            const clientX = point.clientX;
+            const clientY = point.clientY;
             
             const target = document.elementFromPoint(clientX, clientY);
             const dropZone = target?.closest('.drop-target');
@@ -200,7 +222,6 @@
             }
         }
 
-        // --- 其他原有功能 ---
         function updateProblem() {
             const newDiv = parseInt(document.getElementById('input-dividend').value) || 0;
             const newDivisor = parseInt(document.getElementById('input-divisor').value) || 1;
@@ -281,7 +302,7 @@
 
             root.innerHTML = `
                 <!-- Header -->
-                <div class="bg-white px-6 py-3 rounded-2xl shadow-sm border border-blue-100 flex items-center justify-between shrink-0">
+                <div class="bg-white px-6 py-3 rounded-2xl shadow-sm border border-blue-100 flex items-center justify-between shrink-0 m-1">
                     <div class="flex items-center gap-4">
                         <div class="bg-blue-600 text-white p-2 rounded-xl shadow-md"><i data-lucide="book-open" size="24"></i></div>
                         <h1 class="text-xl md:text-2xl font-black text-slate-800">
@@ -290,23 +311,23 @@
                         </h1>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="history.length > 0 && setState(history.pop())" class="p-2 bg-white border border-slate-200 text-slate-400 rounded-xl hover:border-blue-500 hover:text-blue-600 transition-all">
+                        <button onclick="history.length > 0 && setState(history.pop())" class="p-2 bg-white border border-slate-200 text-slate-400 rounded-xl hover:border-blue-500 hover:text-blue-600 transition-all active:scale-90">
                             <i data-lucide="undo-2" size="20"></i>
                         </button>
-                        <button onclick="setState({isSetting: true})" class="p-2 bg-slate-100 text-slate-500 hover:bg-blue-600 hover:text-white rounded-xl transition-all">
+                        <button onclick="setState({isSetting: true})" class="p-2 bg-slate-100 text-slate-500 hover:bg-blue-600 hover:text-white rounded-xl transition-all active:scale-90">
                             <i data-lucide="settings" size="20"></i>
                         </button>
                     </div>
                 </div>
 
                 <!-- Main Content Area -->
-                <div class="flex flex-col md:flex-row gap-4 flex-1">
+                <div class="flex flex-col md:flex-row gap-4 p-1">
                     
-                    <!-- Left Area -->
+                    <!-- Left Area: Bank -->
                     <div class="w-full md:w-1/3 max-w-[320px] flex flex-col gap-3 shrink-0">
                         <div class="bg-white rounded-[32px] border-2 border-blue-500 shadow-lg flex flex-col p-4">
                             <div class="text-center mb-3 font-black text-slate-700">
-                                <div class="inline-block bg-blue-600 text-white px-3 py-0.5 rounded-full text-[10px] mb-1">BANK 銀行</div>
+                                <div class="inline-block bg-blue-600 text-white px-3 py-0.5 rounded-full text-[10px] mb-1 uppercase tracking-tighter">Bank 銀行</div>
                                 <div>剩餘：<span class="text-blue-600 text-3xl">${bankTotal}</span> 元</div>
                             </div>
 
@@ -315,7 +336,7 @@
                                     <div class="bank-label border-red-200 text-red-600 mb-2 w-full">
                                         <span class="text-2xl font-black">${state.bank.tens}</span> <span class="text-sm">個 10 元</span>
                                     </div>
-                                    <div class="flex flex-wrap justify-center gap-1.5 max-h-[150px] overflow-y-auto custom-scrollbar">
+                                    <div class="flex flex-wrap justify-center gap-2 min-h-[60px] max-h-[150px] overflow-y-auto custom-scrollbar w-full p-1">
                                         ${Array.from({ length: state.bank.tens }).map(() => `
                                             <div onmousedown="handleDragStart(event, 'tens')" ontouchstart="handleDragStart(event, 'tens')"
                                                  class="coin w-10 h-10 bg-red-500 border-2 border-red-600 rounded-full flex items-center justify-center text-white font-black text-sm shadow-md">10</div>
@@ -327,7 +348,7 @@
                                     <div class="bank-label border-blue-200 text-blue-600 mb-2 w-full">
                                         <span class="text-2xl font-black">${state.bank.ones}</span> <span class="text-sm">個 1 元</span>
                                     </div>
-                                    <div class="flex flex-wrap justify-center gap-1 max-h-[180px] overflow-y-auto custom-scrollbar w-full">
+                                    <div class="flex flex-wrap justify-center gap-1.5 min-h-[60px] max-h-[180px] overflow-y-auto custom-scrollbar w-full p-1">
                                         ${Array.from({ length: state.bank.ones }).map(() => `
                                             <div onmousedown="handleDragStart(event, 'ones')" ontouchstart="handleDragStart(event, 'ones')"
                                                  class="coin w-7 h-7 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm">1</div>
@@ -343,12 +364,12 @@
                         </div>
                     </div>
 
-                    <!-- Right Area -->
-                    <div class="flex-1 flex flex-col gap-3">
+                    <!-- Right Area: Piles -->
+                    <div class="flex-1">
                         <div class="grid ${gridCols} gap-3 content-start">
                             ${state.piles.map((pile, i) => `
                                 <div data-pile-index="${i}"
-                                     class="drop-target bg-white rounded-3xl p-4 border border-slate-200 shadow-sm flex flex-col gap-2 transition-all min-h-[130px]">
+                                     class="drop-target bg-white rounded-3xl p-4 border border-slate-200 shadow-sm flex flex-col gap-2 transition-all min-h-[140px]">
                                     
                                     <div class="flex justify-between items-center">
                                         <div class="flex items-center gap-2">
@@ -363,12 +384,12 @@
                                         </div>
                                     </div>
 
-                                    <div class="flex-1 flex flex-wrap gap-1.5 content-start p-3 rounded-2xl bg-slate-50 shadow-inner min-h-[50px]">
+                                    <div class="flex-1 flex flex-wrap gap-1.5 content-start p-3 rounded-2xl bg-slate-50 shadow-inner min-h-[60px]">
                                         ${Array.from({ length: pile.tens }).map(() => `
-                                            <div ondblclick="recallCoin(${i}, 'tens')" class="coin w-8 h-8 bg-red-500 border border-red-600 rounded-full flex items-center justify-center text-white font-black text-xs shadow-sm">10</div>
+                                            <div onclick="recallCoin(${i}, 'tens')" class="coin w-8 h-8 bg-red-500 border border-red-600 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm active:scale-110 transition-transform">10</div>
                                         `).join('')}
                                         ${Array.from({ length: pile.ones }).map(() => `
-                                            <div ondblclick="recallCoin(${i}, 'ones')" class="coin w-6 h-6 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[8px] shadow-xs">1</div>
+                                            <div onclick="recallCoin(${i}, 'ones')" class="coin w-6 h-6 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[8px] shadow-xs active:scale-110 transition-transform">1</div>
                                         `).join('')}
                                     </div>
                                 </div>
@@ -377,34 +398,32 @@
                     </div>
                 </div>
 
-                <!-- Footer Bar -->
-                <div class="bg-slate-800 rounded-2xl p-3 text-white shadow-md shrink-0 flex flex-col lg:flex-row items-center justify-between px-6 gap-4 mb-4">
+                <!-- Footer Bar (Fixed) -->
+                <div class="footer-fixed bg-slate-800 rounded-2xl p-3 text-white shadow-xl flex flex-col lg:flex-row items-center justify-between px-6 gap-4">
                     <div class="flex flex-wrap items-center justify-center gap-4">
                         <div class="flex items-center gap-2 lg:border-r border-slate-600 lg:pr-6">
                             <i data-lucide="info" size="18" class="text-blue-400"></i>
                             <span class="text-xs font-black tracking-widest">操作說明</span>
                         </div>
                         <div class="flex flex-wrap justify-center gap-4 text-[10px] font-bold">
-                            <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>長按拖曳分錢</div>
-                            <div class="flex items-center gap-2 text-amber-100"><div class="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>雙擊錢幣收回</div>
+                            <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>拖曳分錢</div>
+                            <div class="flex items-center gap-2 text-amber-100"><div class="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>點擊盤中錢幣收回</div>
                         </div>
                     </div>
 
                     <div class="flex items-center gap-3">
-                        <button onclick="checkDivision()" class="px-4 py-1.5 bg-slate-700 border border-slate-600 rounded-xl text-sm font-black flex items-center gap-2 transition-all hover:bg-slate-600">
+                        <button onclick="checkDivision()" class="px-4 py-1.5 bg-slate-700 border border-slate-600 rounded-xl text-sm font-black flex items-center gap-2 transition-all hover:bg-slate-600 active:scale-95">
                             <i data-lucide="shield-check" size="16" class="text-blue-400"></i>檢查
                         </button>
-                        <button onclick="completeExercise()" class="px-5 py-1.5 bg-blue-600 rounded-xl text-sm font-black flex items-center gap-2 shadow-lg hover:bg-blue-500">
+                        <button onclick="completeExercise()" class="px-5 py-1.5 bg-blue-600 rounded-xl text-sm font-black flex items-center gap-2 shadow-lg hover:bg-blue-500 active:scale-95">
                             <i data-lucide="party-popper" size="16"></i>完成
                         </button>
                     </div>
                 </div>
 
-                <div class="safe-bottom"></div>
-
                 <!-- Settings Modal -->
                 ${state.isSetting ? `
-                    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1500] flex items-center justify-center p-4">
+                    <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2500] flex items-center justify-center p-4">
                         <div class="bg-white p-8 rounded-[40px] shadow-2xl w-full max-w-[400px] border-4 border-blue-600">
                             <h2 class="text-2xl font-black mb-6 text-slate-800 flex items-center gap-3">
                                 <i data-lucide="settings-2" class="text-blue-600"></i> 設定題目
@@ -419,8 +438,8 @@
                                     <input id="input-divisor" type="number" value="${state.divisor}" min="1" max="9" class="w-full text-3xl font-black p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-blue-500 outline-none">
                                 </div>
                                 <div class="flex gap-4">
-                                    <button onclick="setState({isSetting: false})" class="flex-1 py-4 font-black text-slate-400">取消</button>
-                                    <button onclick="updateProblem()" class="flex-1 py-4 font-black bg-blue-600 text-white rounded-2xl shadow-lg">確認</button>
+                                    <button onclick="setState({isSetting: false})" class="flex-1 py-4 font-black text-slate-400 active:scale-95">取消</button>
+                                    <button onclick="updateProblem()" class="flex-1 py-4 font-black bg-blue-600 text-white rounded-2xl shadow-lg active:scale-95">確認</button>
                                 </div>
                             </div>
                         </div>
