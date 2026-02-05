@@ -17,11 +17,11 @@
             font-family: 'Noto Sans TC', sans-serif;
             user-select: none;
             background-color: #f8fafc;
-            overflow: hidden; /* 防止整體滾動干擾拖曳 */
+            overflow: hidden; 
             height: 100vh;
             display: flex;
             flex-direction: column;
-            touch-action: none; /* 禁用瀏覽器手勢，由程式接管 */
+            touch-action: none; 
         }
 
         #root {
@@ -29,8 +29,8 @@
             display: flex;
             flex-direction: column;
             width: 100%;
-            overflow-y: auto; /* 內容過長時在此滾動 */
-            padding-bottom: 100px;
+            overflow-y: auto; 
+            padding-bottom: 120px;
         }
 
         /* 拖曳中的錢幣樣式 */
@@ -45,7 +45,7 @@
             opacity: 0.9;
             transform: scale(1.3);
             box-shadow: 0 15px 30px rgba(0,0,0,0.3);
-            pointer-events: none; /* 極重要：讓觸控穿透到下方元素 */
+            pointer-events: none; 
             position: fixed;
             z-index: 9999;
         }
@@ -91,6 +91,12 @@
             right: 1rem;
             z-index: 100;
         }
+
+        /* 盤中錢幣縮放動畫 */
+        .coin-in-pile {
+            transition: transform 0.2s;
+            touch-action: auto !important; /* 允許點擊事件 */
+        }
     </style>
 </head>
 <body class="p-3 md:p-4">
@@ -110,8 +116,8 @@
         let activeDrag = {
             el: null,
             type: null,
-            offsetX: 25, // 拖曳物件與觸控點的偏移量
-            offsetY: 60  // 往上偏移一點，讓手指不會擋住視野
+            offsetX: 25, 
+            offsetY: 60  
         };
 
         function saveToHistory() {
@@ -125,9 +131,10 @@
             render();
         }
 
-        // --- 核心平板觸控邏輯 ---
         function handleDragStart(e, type) {
-            // 避免觸發瀏覽器選取文字
+            // 防止觸發雙擊收回的衝突
+            if (e.detail > 1) return; 
+
             e.preventDefault();
             
             const point = e.type.includes('touch') ? e.touches[0] : e;
@@ -138,7 +145,6 @@
             activeDrag.el = e.target.closest('.coin').cloneNode(true);
             activeDrag.el.classList.add('dragging');
             
-            // 初始位置稍微偏移手指上方，避免擋住 target 偵測
             activeDrag.el.style.left = `${clientX - activeDrag.offsetX}px`;
             activeDrag.el.style.top = `${clientY - activeDrag.offsetY}px`;
             
@@ -159,14 +165,11 @@
             const clientX = point.clientX;
             const clientY = point.clientY;
             
-            // 更新複本位置
             activeDrag.el.style.left = `${clientX - activeDrag.offsetX}px`;
             activeDrag.el.style.top = `${clientY - activeDrag.offsetY}px`;
 
-            // 移除舊的啟動狀態
             document.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-zone-active'));
             
-            // 偵測手指正下方的元素 (因複本設定了 pointer-events: none，所以可以偵測到後方)
             const target = document.elementFromPoint(clientX, clientY);
             const dropZone = target?.closest('.drop-target');
             if (dropZone) dropZone.classList.add('drop-zone-active');
@@ -176,8 +179,8 @@
             if (!activeDrag.el) return;
             
             const point = e.type.includes('touch') ? e.changedTouches[0] : e;
-            const clientX = point.clientX;
-            const clientY = point.clientY;
+            const clientX = point.clientX || 0;
+            const clientY = point.clientY || 0;
             
             const target = document.elementFromPoint(clientX, clientY);
             const dropZone = target?.closest('.drop-target');
@@ -218,7 +221,45 @@
                 setState({
                     bank: { tens: state.bank.tens - 1, ones: state.bank.ones + 10 }
                 });
-                showToast("10 元 換成 10 個 1 元", "info");
+                showToast("10 元換成 10 個 1 元成功！", "info");
+            }
+        }
+
+        function recallCoin(pileIndex, type) {
+            const newPiles = JSON.parse(JSON.stringify(state.piles));
+            if (newPiles[pileIndex][type] > 0) {
+                newPiles[pileIndex][type]--;
+                setState({
+                    bank: { ...state.bank, [type]: state.bank[type] + 1 },
+                    piles: newPiles
+                });
+            }
+        }
+
+        function checkDivision() {
+            const values = state.piles.map(p => p.tens * 10 + p.ones);
+            const firstValue = values[0];
+            const allEqual = values.every(v => v === firstValue);
+            
+            if (!allEqual) {
+                showToast("每個人分到的錢不相等，還沒平分喔！", "warning");
+            } else {
+                showToast(`檢查完成！每個人目前都分到 ${firstValue} 元，是一樣多的。`, "success");
+            }
+        }
+
+        function completeExercise() {
+            const bankTotal = state.bank.tens * 10 + state.bank.ones;
+            const values = state.piles.map(p => p.tens * 10 + p.ones);
+            const allEqual = values.every(v => v === values[0]);
+
+            if (bankTotal === 0 && allEqual) {
+                showToast("挑戰成功！正在準備下一題...", "success");
+                setTimeout(() => setState({ isSetting: true }), 1500);
+            } else if (bankTotal > 0) {
+                showToast(`銀行還有 ${bankTotal} 元沒分完喔！`, "warning");
+            } else {
+                checkDivision();
             }
         }
 
@@ -245,41 +286,6 @@
             showToast("佈題成功！", "success");
         }
 
-        function recallCoin(pileIndex, type) {
-            const newPiles = JSON.parse(JSON.stringify(state.piles));
-            if (newPiles[pileIndex][type] > 0) {
-                newPiles[pileIndex][type]--;
-                setState({
-                    bank: { ...state.bank, [type]: state.bank[type] + 1 },
-                    piles: newPiles
-                });
-            }
-        }
-
-        function checkDivision() {
-            const bankTotal = state.bank.tens * 10 + state.bank.ones;
-            const values = state.piles.map(p => p.tens * 10 + p.ones);
-            const allEqual = values.every(v => v === values[0]);
-            
-            if (bankTotal > 0) {
-                showToast("銀行還有錢沒分完喔！", "warning");
-            } else if (!allEqual) {
-                showToast("每個人分到的錢不一樣多喔！", "warning");
-            } else {
-                showToast("太棒了！每個人分得一樣多！", "success");
-            }
-        }
-
-        function completeExercise() {
-            const bankTotal = state.bank.tens * 10 + state.bank.ones;
-            if (bankTotal > 0) {
-                showToast("先分完再點完成吧！", "info");
-                return;
-            }
-            showToast("挑戰成功！準備下一題。", "success");
-            setTimeout(() => setState({ isSetting: true }), 1500);
-        }
-
         function showToast(message, type) {
             const container = document.getElementById('toast-container');
             container.innerHTML = ""; 
@@ -289,7 +295,7 @@
             toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check' : (type === 'warning' ? 'alert-circle' : 'info')}"></i><span>${message}</span>`;
             container.appendChild(toast);
             lucide.createIcons();
-            setTimeout(() => toast.remove(), 2000);
+            setTimeout(() => toast.remove(), 2500);
         }
 
         function render() {
@@ -339,7 +345,7 @@
                                     <div class="flex flex-wrap justify-center gap-2 min-h-[60px] max-h-[150px] overflow-y-auto custom-scrollbar w-full p-1">
                                         ${Array.from({ length: state.bank.tens }).map(() => `
                                             <div onmousedown="handleDragStart(event, 'tens')" ontouchstart="handleDragStart(event, 'tens')"
-                                                 class="coin w-10 h-10 bg-red-500 border-2 border-red-600 rounded-full flex items-center justify-center text-white font-black text-sm shadow-md">10</div>
+                                                 class="coin w-10 h-10 bg-red-500 border-2 border-red-600 rounded-full flex items-center justify-center text-white font-black text-sm shadow-md active:scale-95">10</div>
                                         `).join('')}
                                     </div>
                                 </div>
@@ -351,7 +357,7 @@
                                     <div class="flex flex-wrap justify-center gap-1.5 min-h-[60px] max-h-[180px] overflow-y-auto custom-scrollbar w-full p-1">
                                         ${Array.from({ length: state.bank.ones }).map(() => `
                                             <div onmousedown="handleDragStart(event, 'ones')" ontouchstart="handleDragStart(event, 'ones')"
-                                                 class="coin w-7 h-7 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm">1</div>
+                                                 class="coin w-7 h-7 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm active:scale-95">1</div>
                                         `).join('')}
                                     </div>
                                 </div>
@@ -386,10 +392,12 @@
 
                                     <div class="flex-1 flex flex-wrap gap-1.5 content-start p-3 rounded-2xl bg-slate-50 shadow-inner min-h-[60px]">
                                         ${Array.from({ length: pile.tens }).map(() => `
-                                            <div onclick="recallCoin(${i}, 'tens')" class="coin w-8 h-8 bg-red-500 border border-red-600 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm active:scale-110 transition-transform">10</div>
+                                            <div ondblclick="recallCoin(${i}, 'tens')"
+                                                 class="coin-in-pile w-8 h-8 bg-red-500 border border-red-600 rounded-full flex items-center justify-center text-white font-black text-[10px] shadow-sm active:scale-125">10</div>
                                         `).join('')}
                                         ${Array.from({ length: pile.ones }).map(() => `
-                                            <div onclick="recallCoin(${i}, 'ones')" class="coin w-6 h-6 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[8px] shadow-xs active:scale-110 transition-transform">1</div>
+                                            <div ondblclick="recallCoin(${i}, 'ones')"
+                                                 class="coin-in-pile w-6 h-6 bg-blue-400 border border-blue-500 rounded-full flex items-center justify-center text-white font-black text-[8px] shadow-xs active:scale-125">1</div>
                                         `).join('')}
                                     </div>
                                 </div>
@@ -407,13 +415,13 @@
                         </div>
                         <div class="flex flex-wrap justify-center gap-4 text-[10px] font-bold">
                             <div class="flex items-center gap-2"><div class="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>拖曳分錢</div>
-                            <div class="flex items-center gap-2 text-amber-100"><div class="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>點擊盤中錢幣收回</div>
+                            <div class="flex items-center gap-2 text-amber-100"><div class="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>雙擊盤中錢幣可收回銀行</div>
                         </div>
                     </div>
 
                     <div class="flex items-center gap-3">
                         <button onclick="checkDivision()" class="px-4 py-1.5 bg-slate-700 border border-slate-600 rounded-xl text-sm font-black flex items-center gap-2 transition-all hover:bg-slate-600 active:scale-95">
-                            <i data-lucide="shield-check" size="16" class="text-blue-400"></i>檢查
+                            <i data-lucide="shield-check" size="16" class="text-blue-400"></i>檢查平分
                         </button>
                         <button onclick="completeExercise()" class="px-5 py-1.5 bg-blue-600 rounded-xl text-sm font-black flex items-center gap-2 shadow-lg hover:bg-blue-500 active:scale-95">
                             <i data-lucide="party-popper" size="16"></i>完成
