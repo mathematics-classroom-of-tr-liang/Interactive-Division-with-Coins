@@ -2,20 +2,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>除法平分練習－二位數÷一位數</title>
+    <title>除法平分練習 - 教學強化版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         
-        body {
+        body{
             font-family: 'Noto Sans TC', sans-serif;
             user-select: none;
             background-color: #f8fafc;
-            height: 100vh;
-            overflow: hidden;
+            /* 允許全域捲動，確保在任何 iframe 內都能完整顯示 */
+            overflow-y: auto; 
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
+            padding-bottom: 2rem; /* 留白，避免被底端遮擋 */
         }
 
         .coin {
